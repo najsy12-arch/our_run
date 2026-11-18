@@ -399,7 +399,7 @@ let P=[],C={},tintLogo,raf=0,t0=0,running=false;
 function prep(){
  C={ink:hex(css('--ink')),sub:hex(css('--sub')),acc:hex(css('--acc')),line:css('--line'),dark:document.body.dataset.skin==='dark'};
  const lg=$('#logo');tintLogo=document.createElement('canvas');tintLogo.width=lg.naturalWidth;tintLogo.height=lg.naturalHeight;const tc=tintLogo.getContext('2d');
- tc.drawImage(lg,0,0);tc.globalCompositeOperation='source-in';tc.fillStyle=rgb(C.ink,1);tc.fillRect(0,0,tintLogo.width,tintLogo.height);
+ tc.drawImage(lg,0,0);tc.globalCompositeOperation='source-in';tc.fillStyle=rgb(document.body.dataset.skin==='ourrun'?C.acc:C.ink,1);tc.fillRect(0,0,tintLogo.width,tintLogo.height);
  const num=$('#heroNum'),pr=phone.getBoundingClientRect(),mk=document.createElement('span');mk.style.cssText='display:inline-block;width:0;height:0';num.appendChild(mk);
  const base=(mk.getBoundingClientRect().top-pr.top)/SCALE,left=(num.getBoundingClientRect().left-pr.left)/SCALE;mk.remove();
  const oc=document.createElement('canvas');oc.width=W;oc.height=H;const o=oc.getContext('2d');o.font='italic 800 168px "Barlow Condensed"';o.letterSpacing='-3px';o.fillStyle='#fff';o.fillText(num.textContent.trim(),left,base);
