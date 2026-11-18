@@ -1,0 +1,452 @@
+# 아워런 스킨 데모 사이트 코드
+
+단일 파일 사이트예요. 아래 코드를 `index.html`로 저장하면 그대로 동작하고, Vercel에는 이 파일 하나만 올리면 됩니다(빌드 설정 없음).
+
+## 구성
+- 첫 화면에서 블랙/화이트/아워런(화이트+블루) 스킨 선택 → 오프닝(로고 → 숫자 롤링 → 선 → 기록 숫자) → 홈
+- 하단 탭: 홈, 랭킹(순위·레이스·거리별), 일정(우리 모임·대회 일정), 내 기록
+- 스킨은 `body[data-skin]`의 CSS 변수(`--bg --ink --sub --line --soft --acc --on`)로만 바뀜
+- 오프닝은 `#heroNum`에 실제로 표시된 숫자의 글자 모양을 읽어 점을 모으므로, 숫자가 바뀌어도 그대로 동작
+- 데이터는 상단 `FEED / RANK / RACE / EVENTS / RECS / RUN` 상수에 고정. 실제 앱에서는 이 부분을 API 응답으로 교체
+- 로고는 앱 아이콘 스크린샷에서 잘라낸 PNG(base64). 실제 구현 시 원본 로고로 교체 권장
+
+## index.html
+
+```html
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>아워런 스킨 데모</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@1,600;1,700;1,800&family=Gothic+A1:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--font:'Gothic A1','Apple SD Gothic Neo',sans-serif;--num:'Barlow Condensed','Arial Narrow',sans-serif}
+[data-skin=dark]{--bg:#0A0C0B;--ink:#F2F5EE;--sub:#8C948A;--line:#262C27;--soft:#151916;--acc:#C6FF3D;--on:#0A0C0B;--page:#1B1E1C}
+[data-skin=ourrun]{--bg:#F6F8FB;--ink:#111827;--sub:#5B6474;--line:#DFE4EC;--soft:#EBEFF5;--acc:#3D74E6;--on:#FFFFFF;--page:#D3DAE6}
+[data-skin=light]{--bg:#F5F5F2;--ink:#0B0C0B;--sub:#5F655E;--line:#DEE0DA;--soft:#ECEDE8;--acc:#0B0C0B;--on:#FFFFFF;--page:#D9DAD5}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{font-family:var(--font);background:var(--page,#111);color:var(--ink);overflow:hidden;-webkit-font-smoothing:antialiased;transition:background .3s}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+button:focus-visible,a:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.num{font-family:var(--num);font-style:italic;font-weight:800}
+
+/* picker */
+#picker{position:fixed;inset:0;z-index:50;background:#0E100F;color:#F2F5EE;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;padding:24px;text-align:center}
+#picker h1{font-weight:800;font-size:26px;line-height:1.35}
+#picker p{color:#9AA198;font-size:14px;line-height:1.6}
+.choices{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
+.choice{width:138px;padding:14px;border-radius:18px;border:1px solid #2C322E;display:flex;flex-direction:column;gap:12px;align-items:stretch;transition:transform .2s,border-color .2s}
+.choice:hover{transform:translateY(-3px);border-color:#C6FF3D}
+.sw{height:170px;border-radius:12px;padding:14px;display:flex;flex-direction:column;justify-content:space-between;text-align:left}
+.sw b{font:italic 800 46px/1 var(--num)}
+.sw i{display:block;height:6px;width:70%;transform:skewX(-28deg)}
+.choice span{font-weight:800;font-size:15px}
+.sw.dark{background:#0A0C0B;color:#F2F5EE}.sw.dark i{background:#C6FF3D}
+.sw.our{background:#F6F8FB;color:#111827;border:1px solid #DFE4EC}.sw.our i{background:#3D74E6}
+.sw.light{background:#F5F5F2;color:#0B0C0B;border:1px solid #DEE0DA}.sw.light i{background:#0B0C0B}
+
+/* stage */
+#stage{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center}
+#bar{height:56px;flex:none;display:flex;align-items:center;gap:8px;color:var(--ink)}
+#bar .seg{display:flex;background:var(--soft);border-radius:999px;padding:3px}
+#bar .seg button{height:36px;padding:0 14px;border-radius:999px;font-size:13px;font-weight:600;color:var(--sub)}
+#bar .seg button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+#bar .re{height:36px;padding:0 14px;border-radius:999px;font-size:13px;font-weight:600;border:1px solid var(--line)}
+#wrap{flex:1;width:100%;display:flex;align-items:flex-start;justify-content:center;overflow:hidden}
+.phone{width:390px;height:844px;position:relative;overflow:hidden;background:var(--bg);color:var(--ink);border-radius:46px;box-shadow:0 30px 80px rgba(0,0,0,.35);transform-origin:top center;flex:none;transition:background .3s}
+@media (max-width:480px){.phone{border-radius:0;box-shadow:none}#bar{height:50px}}
+
+/* screens */
+.scr{position:absolute;left:0;right:0;top:0;bottom:84px;overflow-y:auto;overflow-x:hidden;padding:0 24px 32px;scrollbar-width:none;display:none}
+.scr::-webkit-scrollbar{display:none}
+.scr.on{display:block}
+.hd{height:44px;margin:52px 0 0;display:flex;align-items:center;justify-content:space-between;margin-right:-12px}
+.crew{display:flex;align-items:center;gap:6px;height:44px;font-weight:800;font-size:18px}
+.crew small{font-weight:400;font-size:13px;color:var(--sub)}
+.ib{width:44px;height:44px;display:flex;align-items:center;justify-content:center}
+.sub{color:var(--sub)}
+.sec{border-top:1px solid var(--line);padding-top:16px;margin-top:20px}
+.lbl{font-size:12px;color:var(--sub);display:flex;justify-content:space-between;align-items:baseline}
+.tag{display:inline-flex;align-items:center;background:var(--acc);color:var(--on);font-weight:800;font-size:13px;height:28px;padding:0 12px;border-radius:3px}
+.otag{display:inline-block;font-size:11px;line-height:18px;padding:0 6px;border:1px solid var(--acc);border-radius:2px;white-space:nowrap}
+[data-skin=dark] .otag,[data-skin=ourrun] .otag{color:var(--acc)}
+.prog{height:4px;background:var(--line);margin-top:8px}.prog>i{display:block;height:4px;background:var(--acc)}
+.cta{position:sticky;bottom:12px;margin-top:22px;width:100%;height:56px;background:var(--acc);color:var(--on);font-weight:800;font-size:17px;display:flex;align-items:center;justify-content:center;gap:10px;clip-path:polygon(14px 0,100% 0,calc(100% - 14px) 100%,0 100%)}
+.out{width:100%;height:50px;border:1.5px solid var(--ink);font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:20px}
+.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin:0 -24px;padding:0 24px}
+.chips::-webkit-scrollbar{display:none}
+.chip{height:36px;padding:0 13px;border-radius:999px;border:1px solid var(--line);font-size:13px;white-space:nowrap;color:var(--sub);flex:none}
+.chip[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink);font-weight:600}
+.chip small{font-size:11px;opacity:.7;margin-left:2px}
+.tabs{display:flex;gap:22px;border-bottom:1px solid var(--line)}
+.tabs button{height:44px;font-size:15px;font-weight:600;color:var(--sub);border-bottom:3px solid transparent}
+.tabs button[aria-pressed=true]{color:var(--ink);font-weight:800;border-color:var(--acc)}
+.feed{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+.av{width:40px;height:40px;border-radius:50%;background:var(--soft);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px}
+.cheer{height:44px;padding:0 8px;display:flex;align-items:center;gap:4px;font-weight:600;font-size:13px}
+.cheer[aria-pressed=true]{color:var(--ink)}[data-skin=dark] .cheer[aria-pressed=true],[data-skin=ourrun] .cheer[aria-pressed=true]{color:var(--acc)}
+.big{font:italic 800 34px/1 var(--num)}
+
+/* nav */
+nav{position:absolute;left:0;right:0;bottom:0;height:84px;padding:8px 8px 0;border-top:1px solid var(--line);background:var(--bg);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));z-index:5}
+nav button{height:48px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:11px;color:var(--sub)}
+nav button[aria-current=page]{color:var(--ink);font-weight:800}[data-skin=dark] nav button[aria-current=page],[data-skin=ourrun] nav button[aria-current=page]{color:var(--acc)}
+
+/* opening */
+#fx{position:absolute;left:0;top:0;width:390px;height:844px;z-index:20;pointer-events:none}
+#skip{position:absolute;right:16px;top:56px;z-index:21;height:36px;padding:0 12px;border-radius:999px;font-size:12px;color:var(--sub);border:1px solid var(--line);display:none}
+.phone.pre .rev{opacity:0;transform:translateY(16px)}
+.phone.pre #heroNum{opacity:0}
+.rev,#heroNum{transition:opacity .45s ease,transform .6s cubic-bezier(.16,1,.3,1)}
+
+/* toast */
+#toast{position:absolute;left:50%;bottom:104px;transform:translate(-50%,20px);opacity:0;background:var(--ink);color:var(--bg);font-size:13px;font-weight:600;padding:12px 18px;border-radius:999px;transition:.25s;z-index:30;white-space:nowrap;pointer-events:none}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* ranking */
+.alert{border:1px solid var(--line);border-left:3px solid var(--acc);padding:12px 8px 12px 14px;margin-top:10px;display:grid;grid-template-columns:minmax(0,1fr) 44px;font-size:13px;line-height:1.55}
+[data-skin=light] .alert{border-left-color:var(--ink)}
+.alert b{font-weight:800}.alert .mv{font:italic 700 15px var(--num)}
+.alert a{color:var(--sub);text-decoration:underline;font-size:12px}
+.pod{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-items:end;margin-top:18px}
+.pod>div{text-align:center}
+.pod .blk{margin-top:8px;display:flex;align-items:center;justify-content:center;font:italic 800 40px var(--num);transform:skewX(-8deg)}
+.rk{display:grid;grid-template-columns:34px minmax(0,1fr) auto;column-gap:8px;align-items:center;height:62px;border-bottom:1px solid var(--line)}
+.rk .n{font:italic 800 26px/1 var(--num)}
+.rk .bar{height:5px;background:var(--line);margin-top:7px;transform:skewX(-20deg)}.rk .bar i{display:block;height:5px;background:var(--ink)}
+.rk.me{background:var(--soft);margin:0 -24px;padding:0 24px}
+.rk.me .n{color:var(--acc)}[data-skin=light] .rk.me .n{color:var(--ink)}
+.rk.me .bar i{background:var(--acc)}
+.rk.idle{height:46px;color:var(--sub)}
+.seg3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:var(--soft);padding:3px;margin-top:18px}
+.seg3 button{height:40px;font-size:14px;font-weight:600;color:var(--sub)}
+.seg3 button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+
+/* records */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;margin-top:10px}
+.cal div{height:46px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:12px;background:color-mix(in srgb,var(--acc) calc(var(--k,0)*100%),var(--soft))}
+.cal div.hd7{background:none;height:22px;color:var(--sub);font-size:11px}
+.cal div.run{color:var(--on);font-weight:800}
+.cal div.run small{font:italic 700 13px var(--num)}
+.cal div.today{outline:2px solid var(--ink);outline-offset:-2px}
+.cal div.fut{opacity:.35}
+.tile{border:1px solid var(--line);padding:16px;text-align:left;display:flex;flex-direction:column;gap:6px}
+.rec{display:grid;grid-template-columns:62px minmax(0,1fr);gap:14px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line);text-align:left;width:100%}
+.rec .km{height:62px;background:var(--ink);color:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;font:italic 800 24px/1 var(--num)}
+.rec .km small{font:400 11px var(--font)}
+.ev{display:grid;grid-template-columns:50px minmax(0,1fr) 40px;gap:10px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+.ev .d{font:italic 800 20px/1 var(--num);text-align:center}.ev .d small{display:block;font:400 11px var(--font);color:var(--sub);margin-top:3px}
+.st{font-size:11px;padding:1px 6px;border:1px solid var(--line);color:var(--sub);white-space:nowrap}
+.st.open{border-color:var(--acc)}[data-skin=dark] .st.open,[data-skin=ourrun] .st.open{color:var(--acc)}[data-skin=light] .st.open{color:var(--ink);font-weight:600}
+.star[aria-pressed=true] svg{fill:currentColor}
+</style>
+</head>
+<body data-skin="dark">
+
+<div id="picker">
+  <div>
+    <h1>아워런 리디자인 데모</h1>
+    <p>스킨을 고르면 오프닝부터 앱 화면까지 체험할 수 있어요.<br>데모 화면이라 데이터는 고정이에요.</p>
+  </div>
+  <div class="choices">
+    <button class="choice" type="button" data-pick="dark"><div class="sw dark"><b>19.7</b><i></i></div><span>블랙 스킨</span></button>
+    <button class="choice" type="button" data-pick="light"><div class="sw light"><b>19.7</b><i></i></div><span>화이트 스킨</span></button>
+    <button class="choice" type="button" data-pick="ourrun"><div class="sw our"><b>19.7</b><i></i></div><span>아워런 스킨</span></button>
+  </div>
+</div>
+
+<div id="stage" hidden>
+  <div id="bar">
+    <div class="seg" role="group" aria-label="스킨"><button type="button" data-skin-btn="dark">블랙</button><button type="button" data-skin-btn="light">화이트</button><button type="button" data-skin-btn="ourrun">아워런</button></div>
+    <button type="button" class="re" id="replay">오프닝 다시 보기</button>
+  </div>
+  <div id="wrap">
+    <div class="phone" id="phone">
+
+      <!-- HOME -->
+      <section class="scr on" id="s-home" aria-label="홈">
+        <div aria-hidden="true" class="rev" style="position:absolute;right:-30px;top:132px;display:flex;flex-direction:column;gap:10px;align-items:flex-end">
+          <div style="width:150px;height:6px;background:var(--acc);transform:skewX(-28deg)"></div>
+          <div style="width:110px;height:6px;background:var(--acc);opacity:.55;transform:skewX(-28deg)"></div>
+          <div style="width:70px;height:6px;background:var(--acc);opacity:.25;transform:skewX(-28deg)"></div>
+        </div>
+        <div class="hd rev" data-r="1"><button type="button" class="crew" data-demo>JVM 러닝 <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg><small>16명</small></button><div style="display:flex"><button type="button" class="ib" aria-label="크루 초대" data-demo><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6M19 8v6M16 11h6"/></svg></button><button type="button" class="ib" aria-label="설정" data-demo><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h8M18 6h2M4 12h2M12 12h8M4 18h10M20 18h0"/><circle cx="15" cy="6" r="2.5"/><circle cx="9" cy="12" r="2.5"/><circle cx="17" cy="18" r="2.5"/></svg></button></div></div>
+        <div style="margin-top:18px">
+          <div class="sub rev" data-r="0" style="font-size:13px">더기님의 11월 누적 거리</div>
+          <div style="display:flex;align-items:baseline;gap:8px;height:146px">
+            <div id="heroNum" style="font:italic 800 168px/146px var(--num);letter-spacing:-3px">19.7</div>
+            <div class="rev" data-r="2" style="font:italic 700 34px/1 var(--num);color:var(--acc)">KM</div>
+          </div>
+          <div class="rev" data-r="3" style="display:flex;align-items:center;gap:10px;margin-top:10px"><span class="tag">크루 5위</span><span class="sub" style="font-size:13px">1위까지 299.8km</span></div>
+        </div>
+        <div class="rev" data-r="4" style="margin-top:28px">
+          <div class="lbl" style="font-size:14px;color:var(--ink)"><b>이번 주</b><span class="sub" style="font-size:12px">3주 연속 주 2일 이상 · <b style="color:var(--ink)">1/2일</b></span></div>
+          <div id="week" style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin-top:12px;align-items:end;height:62px"></div>
+        </div>
+        <div class="sec rev" data-r="5">
+          <div class="lbl"><span>거리 메달</span><button type="button" class="sub" data-demo style="font-size:12px;height:32px">받은 메달 0개 ›</button></div>
+          <div style="margin-top:6px">
+            <div class="lbl" style="font-size:13px;color:var(--ink)"><b style="font-weight:600">올해 50K 메달</b><span class="sub"><span class="num" style="font-size:17px;color:var(--ink)">16.4</span> km 남음 · 33.6km</span></div>
+            <div class="prog"><i style="width:67%"></i></div>
+          </div>
+          <div style="margin-top:14px">
+            <div class="lbl" style="font-size:13px;color:var(--ink)"><b style="font-weight:600">11월 50K 메달</b><span class="sub"><span class="num" style="font-size:17px;color:var(--ink)">30.3</span> km 남음 · 19.7km</span></div>
+            <div class="prog"><i style="width:39%"></i></div>
+          </div>
+        </div>
+        <div class="sec rev" data-r="6">
+          <div class="lbl"><span>크루 소식</span><span>최근 7일 최고기록과 메달</span></div>
+          <div id="feed"></div>
+        </div>
+        <button type="button" class="sec rev" data-demo data-r="7" style="width:100%;text-align:left;border:1px dashed var(--line);padding:22px 16px;margin-top:20px;display:block">
+          <div class="sub" style="font-size:11px;letter-spacing:.1em">홍보</div>
+          <div style="font-weight:800;font-size:17px;margin-top:6px">홍보 화면</div>
+          <div class="sub" style="font-size:12px;margin-top:2px">크루 제휴 매장 광고가 들어가는 자리예요</div>
+        </button>
+        <button type="button" class="cta rev" data-r="8" data-demo>오늘 달리기 기록하기 <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+      </section>
+
+      <!-- RANKING -->
+      <section class="scr" id="s-rank" aria-label="랭킹">
+        <div class="hd"><button type="button" class="crew" data-demo>JVM 러닝 <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg><small>16명</small></button><div style="display:flex"><button type="button" class="ib" aria-label="크루 초대" data-demo><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6M19 8v6M16 11h6"/></svg></button><button type="button" class="ib" aria-label="설정" data-demo><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h8M18 6h2M4 12h2M12 12h8M4 18h10M20 18h0"/><circle cx="15" cy="6" r="2.5"/><circle cx="9" cy="12" r="2.5"/><circle cx="17" cy="18" r="2.5"/></svg></button></div></div>
+        <div style="margin-top:14px;display:flex;align-items:flex-end;justify-content:space-between">
+          <div>
+            <div class="sub" style="font-size:13px">이번 달 크루에서</div>
+            <div style="display:flex;align-items:baseline;gap:6px;height:120px"><span style="font:italic 800 150px/120px var(--num);color:var(--acc)">5</span><span style="font-weight:800;font-size:38px">위</span></div>
+          </div>
+          <div style="text-align:right;padding-bottom:8px"><div class="sub" style="font-size:13px">1위까지</div><div><span class="big" style="font-size:42px">299.8</span><span style="font:italic 700 18px var(--num);color:var(--acc)"> KM</span></div></div>
+        </div>
+        <div class="chips" data-chips style="margin-top:18px"><button class="chip" aria-pressed="true">이번 달</button><button class="chip">지난 달</button><button class="chip">이번 주</button><button class="chip">더 보기 ▾</button></div>
+        <div id="alerts" style="margin-top:8px"></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:16px;font-size:12px"><span class="sub">내 메달 1개</span><button type="button" data-demo class="otag" style="height:24px;line-height:22px;padding:0 8px">달린 날 3위 · 5일</button></div>
+        <div class="seg3" role="group"><button type="button" aria-pressed="true" data-rv="list">순위</button><button type="button" data-rv="race">레이스</button><button type="button" data-rv="dist">거리별</button></div>
+        <div id="rv-list"></div>
+        <div id="rv-race" hidden></div>
+        <div id="rv-dist" hidden></div>
+        <button type="button" class="out" data-demo><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg> 순위 카드로 저장</button>
+      </section>
+
+      <!-- SCHEDULE -->
+      <section class="scr" id="s-cal" aria-label="일정">
+        <div class="hd"><button type="button" class="crew" data-demo>JVM 러닝 <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg><small>16명</small></button><div style="display:flex"><button type="button" class="ib" aria-label="크루 초대" data-demo><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6M19 8v6M16 11h6"/></svg></button><button type="button" class="ib" aria-label="설정" data-demo><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h8M18 6h2M4 12h2M12 12h8M4 18h10M20 18h0"/><circle cx="15" cy="6" r="2.5"/><circle cx="9" cy="12" r="2.5"/><circle cx="17" cy="18" r="2.5"/></svg></button></div></div>
+        <div class="tabs" style="margin-top:8px"><button type="button" data-sv="meet">우리 모임</button><button type="button" aria-pressed="true" data-sv="race">대회 일정</button></div>
+        <div id="sv-meet" hidden style="padding:60px 0;text-align:center">
+          <div style="font-weight:800;font-size:18px">예정된 모임이 없어요</div>
+          <div class="sub" style="font-size:13px;margin-top:6px">크루원과 함께 달릴 날을 잡아보세요</div>
+          <button type="button" class="out" data-demo style="width:180px;margin:22px auto 0">모임 만들기</button>
+        </div>
+        <div id="sv-race">
+          <div style="margin-top:20px;font-weight:800;font-size:26px;line-height:1.3">2026년 전국 대회<br><span class="num" style="font-size:52px;color:var(--acc)">54</span>개예요</div>
+          <div class="chips" data-chips style="margin-top:16px"><button class="chip" aria-pressed="true">모든 달</button><button class="chip">11월<small>30</small></button><button class="chip">12월<small>24</small></button></div>
+          <div class="chips" data-chips style="margin-top:8px"><button class="chip">내 지역</button><button class="chip">관심 대회</button><button class="chip" aria-pressed="true">전체</button><button class="chip">서울<small>19</small></button><button class="chip">경남<small>5</small></button><button class="chip">더 보기</button></div>
+          <div class="chips" data-chips style="margin-top:8px"><button class="chip" aria-pressed="true">접수 모두</button><button class="chip">접수 중<small>43</small></button><button class="chip">접수 예정<small>0</small></button><button class="chip">접수 마감<small>11</small></button></div>
+          <div class="lbl" style="margin-top:22px;border-bottom:2px solid var(--ink);padding-bottom:8px"><b style="color:var(--ink);font-size:14px">11월</b></div>
+          <div id="events"></div>
+        </div>
+      </section>
+
+      <!-- RECORDS -->
+      <section class="scr" id="s-rec" aria-label="내 기록">
+        <div class="hd"><button type="button" class="crew" data-demo>JVM 러닝 <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg><small>16명</small></button><div style="display:flex"><button type="button" class="ib" aria-label="크루 초대" data-demo><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6M19 8v6M16 11h6"/></svg></button><button type="button" class="ib" aria-label="설정" data-demo><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h8M18 6h2M4 12h2M12 12h8M4 18h10M20 18h0"/><circle cx="15" cy="6" r="2.5"/><circle cx="9" cy="12" r="2.5"/><circle cx="17" cy="18" r="2.5"/></svg></button></div></div>
+        <div style="margin-top:16px;font-weight:800;font-size:26px;line-height:1.3">이번 달 <span style="color:var(--acc)">5번</span>,<br><span class="num" style="font-size:64px;line-height:.95">19.7</span><span style="font:italic 700 22px var(--num)"> KM</span> 달렸어요</div>
+        <div class="sub" style="font-size:13px;margin-top:6px">가장 길게 달린 날 5.4km</div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:20px">
+          <button type="button" class="tile" data-demo><svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></svg><b style="font-size:16px">훈련 계획</b><span class="sub" style="font-size:12px">AI 계획과 오늘 훈련</span></button>
+          <button type="button" class="tile" data-demo><svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg><b style="font-size:16px">기록 올리기</b><span class="sub" style="font-size:12px">시계, 사진</span></button>
+        </div>
+        <div class="sec">
+          <div class="lbl"><b style="color:var(--ink);font-size:14px">달린 날 · 2026년 11월</b><span>나 (더기)</span></div>
+          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:12px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+            <div style="padding:10px 0"><span class="big" style="font-size:28px">5</span><span style="font-size:13px">일</span><div class="sub" style="font-size:11px">달린 날</div></div>
+            <div style="padding:10px 0 10px 14px;border-left:1px solid var(--line)"><span class="big" style="font-size:28px">19.7</span><span style="font-size:13px">km</span><div class="sub" style="font-size:11px">총 거리</div></div>
+            <div style="padding:10px 0 10px 14px;border-left:1px solid var(--line)"><span class="big" style="font-size:28px">2</span><span style="font-size:13px">일</span><div class="sub" style="font-size:11px">최장 연속</div></div>
+          </div>
+          <div class="cal" id="cal"></div>
+          <div class="sub" style="font-size:11px;margin-top:10px;text-align:center">진할수록 오래 달린 날이에요 · 날짜를 누르면 그날 기록이 보여요</div>
+        </div>
+        <div class="sec">
+          <div class="lbl"><b style="color:var(--ink);font-size:14px">내 기록</b><span>2026. 11. 1. ~ 11. 18.</span></div>
+          <div id="recs"></div>
+        </div>
+      </section>
+
+      <nav aria-label="하단 메뉴" class="rev" data-r="3">
+        <button type="button" data-tab="home" aria-current="page"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>홈</button>
+        <button type="button" data-tab="rank"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21V8h6v13M3 21v-8h6M15 21V12h6v9M2 21h20"/></svg>랭킹</button>
+        <button type="button" data-tab="cal"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>일정</button>
+        <button type="button" data-tab="rec"><svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V11M10 20V4M16 20v-7M22 20H2"/></svg>내 기록</button>
+      </nav>
+
+      <canvas id="fx" width="780" height="1688"></canvas>
+      <button type="button" id="skip">건너뛰기</button>
+      <div id="toast" role="status"></div>
+      <img id="logo" alt="" hidden src="data:image/png;base64,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">
+    </div>
+  </div>
+</div>
+
+<script>
+const ICON={heart:'<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>',x:'<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',star:'<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 2.9 1.1-6.2L3 9.6l6.2-.9z"/></svg>'};
+/* ---------- data (from the current app) ---------- */
+const FEED=[
+ {n:'뚜기',a:'뚜',t:'어제 12:34',km:'1.63',tm:'25:19',tag:'최장 거리 신기록',c:4},
+ {n:'달리는 재우',a:'재',t:'11/16 17:17',km:'8.04',tm:'55:48',tag:'최장 거리 신기록',c:4},
+ {n:'검은나시맨',a:'검',t:'11/15 18:56',km:'46.00',tm:'3:47:40',tag:'2026년 300K 메달',c:1},
+ {n:'OfficeDog 구독좀;',a:'O',t:'11/12 18:07',km:'7.43',tm:'2:11:20',tag:'첫 5K 완주',c:5}];
+const RANK=[
+ {n:'검은나시맨',km:319.50,r:'4회'},{n:'달리는 재우',km:42.39,r:'9회'},{n:'정택민',km:35.28,r:'12회'},
+ {n:'니앞에내있다',km:24.00,r:''},{n:'더기',km:19.70,r:'5회',me:1},{n:'OfficeDog 구독좀;',km:12.40,r:"3회 · 15'07\""},
+ {n:'뚜기',km:5.25,r:"5회 · 21'02\""},{n:'달리는 우뚝',km:4.00,r:"2회 · 6'05\""},{n:'오경석이다',km:3.32,r:"1회 · 7'17\""},
+ {n:'말달리자',km:2.01,r:"1회 · 16'51\""},{n:'소공이',km:1.27,r:"1회 · 38'35\""}];
+const IDLE=['달리는 주노','달리는 철수','정준','초고수지호','최강우뚱'];
+const RACE={'검은나시맨':[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],'달리는 재우':[0,2,2,2,2,2,3,3,2,2,2,2,2,2,3,3,2,2],
+ '정택민':[0,0,4,3,3,3,2,2,3,3,3,3,3,3,2,2,3,3],'니앞에내있다':[0,0,0,4,4,4,4,4,5,5,4,4,4,4,4,4,4,4],
+ '더기':[0,3,3,4,5,5,5,5,4,4,5,5,5,5,5,5,5,5],'OfficeDog 구독좀;':[0,0,0,0,0,0,0,0,0,0,0,6,6,6,6,6,6,6],
+ '뚜기':[0,0,0,0,0,0,0,0,0,0,0,7,9,7,7,7,7,7],'달리는 우뚝':[0,0,0,0,0,0,0,0,0,0,0,8,8,8,8,9,8,8],
+ '오경석이다':[0,0,0,0,0,0,0,0,0,0,0,9,7,9,9,8,9,9],'말달리자':[0,0,0,0,0,0,0,0,0,0,0,0,0,10,10,10,10,10],'소공이':[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,11,11,11]};
+const EVENTS=[
+ ['2026 세정 가을바람 유러닝페스타','10km, 5km, 10k 커플런','하남 미사리',1],['2026 남해트레일레이스(가을)','풀, 30km, 12km','남해공설운동장',1],
+ ['GIVE RUN 2026 부산','10km, 5km','부산 대저생태공원',0],['2026 아식스 서울신문 고프리런','하프, 10km','여의도공원',0],
+ ['런텐 14차 레이스 JUST RUN10 대구','10km, 5km','금호강 러닝성지',1],['2026 GETR구미 에코 트레일레이스','10km, 21km, 키즈레이스','구미 경운대학교',1],
+ ['2026 서울 라이프마라톤(가을)','하프, 10km, 5km','평화의공원',1]];
+const RECS=[['5.0','2026-11-16 23:11','5.01km · 57:39 · 11\'31"',''],['3.0','2026-11-15 20:17','3.01km · 39:47 · 13\'14"',''],
+ ['2.5','2026-11-09 23:14','2.50km · 30:54 · 12\'21"',''],['3.8','2026-11-07 22:33','3.78km · 36:36 · 9\'41"',''],['5.4','2026-11-02 23:47','5.41km · 58:31 · 10\'49"','PR 최장, 5K']];
+const RUN={2:5.4,7:3.8,9:2.5,15:3.0,16:5.0};
+
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const phone=$('#phone'),toastEl=$('#toast');
+let toastT;function toast(m){toastEl.textContent=m;toastEl.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>toastEl.classList.remove('on'),1600)}
+const css=v=>getComputedStyle(document.body).getPropertyValue(v).trim();
+
+/* ---------- build ---------- */
+const DAYS=['월','화','수','목','금','토','일'];
+$('#week').innerHTML=DAYS.map((d,i)=>{const ran=i===0,today=i===2;
+ const bar=ran?'height:40px;background:var(--acc)':today?'height:40px;border:1.5px dashed var(--acc)':'height:4px;background:var(--line)';
+ return `<div style="display:flex;flex-direction:column;align-items:center;gap:6px"><div style="width:100%;${bar};transform:skewX(-10deg)"></div><div style="font-size:11px;line-height:14px;${today?'font-weight:800':ran?'font-weight:600':'color:var(--sub)'}">${today?'오늘':d}</div></div>`}).join('');
+$('#feed').innerHTML=FEED.map(f=>`<div class="feed"><div class="av" aria-hidden="true">${f.a}</div><div style="min-width:0">
+ <div style="display:flex;align-items:baseline;gap:6px;flex-wrap:wrap"><span class="num" style="font-size:24px;line-height:26px">${f.km}</span><span class="sub" style="font-size:12px">km · ${f.tm}</span><span class="otag">${f.tag}</span></div>
+ <div class="sub" style="font-size:12px;line-height:18px"><b style="color:var(--ink);font-weight:600">${f.n}</b> · ${f.t}</div></div>
+ <button type="button" class="cheer" aria-pressed="false" data-c="${f.c}">${ICON.heart}<span>${f.c}</span></button></div>`).join('');
+
+const max=RANK[0].km,podium=[RANK[1],RANK[0],RANK[2]],ph=[96,140,74];
+$('#rv-list').innerHTML=`<div class="lbl" style="margin-top:20px"><span>11월 · 총 거리</span><button type="button" data-demo class="sub" style="font-size:12px;height:32px">총 거리 ▾</button></div>
+ <div class="pod">${podium.map((p,i)=>`<div><div style="font-weight:800;font-size:14px">${p.n}</div><div class="num" style="font-size:${i==1?26:20}px">${p.km.toFixed(2)}<small style="font:400 11px var(--font)"> km</small></div><div class="sub" style="font-size:11px">${p.r}</div>
+ <div class="blk" style="height:${ph[i]}px;background:${i==1?'var(--acc);color:var(--on)':'var(--soft)'}">${[2,1,3][i]}</div></div>`).join('')}</div>
+ <div style="margin-top:12px;border-top:2px solid var(--ink)">${RANK.slice(3).map((p,i)=>`<div class="rk${p.me?' me':''}"><div class="n">${i+4}</div><div style="min-width:0"><div style="display:flex;gap:6px;align-items:baseline"><b style="font-size:15px">${p.n}</b><span class="sub" style="font-size:12px">${p.r}</span></div><div class="bar"><i style="width:${Math.max(1.5,p.km/RANK[3].km*100)}%"></i></div></div><div><span class="num" style="font-size:26px">${p.km.toFixed(2)}</span><span class="sub" style="font-size:11px"> km</span></div></div>`).join('')}
+ ${IDLE.map(n=>`<div class="rk idle"><div class="n" style="font-size:18px">–</div><div style="font-size:14px">${n}</div><div style="font-size:12px">출발 전</div></div>`).join('')}</div>`;
+
+$('#alerts').innerHTML=[['1K','7위','9위'],['3K','6위','8위']].map(([d,a,b])=>`<div class="alert"><div><b>오경석이다</b>님 외 1명이 ${d} 페이스에서 나를 추월했어요<div><span class="mv">${a} → ${b}</span> <span class="sub">7'17"/km (11.16 · 3.32km)</span></div><a href="#" data-demo>${d} 순위 보기</a></div><button type="button" aria-label="알림 닫기" class="ib" data-close>${ICON.x}</button></div>`).join('');
+
+function raceSVG(){const W=342,H=330,x0=26,x1=212,y0=14,dy=(H-36)/10,X=d=>x0+(x1-x0)*d/17,Y=r=>y0+(r-1)*dy;
+ let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="11월 날짜별 순위 변화" style="margin-top:14px;font-family:var(--font)">`;
+ for(let r=1;r<=11;r++)s+=`<text x="10" y="${Y(r)+4}" font-size="10" fill="var(--sub)" text-anchor="middle">${r}</text><line x1="${x0}" x2="${x1}" y1="${Y(r)}" y2="${Y(r)}" stroke="var(--line)"/>`;
+ [[0,'11.1'],[4,'11.5'],[9,'11.10'],[13,'11.14'],[17,'11.18']].forEach(([d,l])=>s+=`<text x="${X(d)}" y="${H-4}" font-size="10" fill="var(--sub)" text-anchor="middle">${l}</text>`);
+ const ord=Object.keys(RACE).sort(a=>a==='더기'?1:-1);
+ for(const n of ord){const a=RACE[n],me=n==='더기',top=a[17]<=3,col=me?'var(--acc)':top?'var(--ink)':'var(--sub)',w=me?3.5:top?2:1.4;
+  let p='';a.forEach((r,d)=>{if(r)p+=(p?'L':'M')+X(d)+' '+Y(r)});
+  s+=`<path d="${p}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linejoin="round" opacity="${me||top?1:.55}"/>`;
+  const km=RANK.find(x=>x.n===n).km;s+=`<circle cx="${X(17)}" cy="${Y(a[17])}" r="${me?4.5:3}" fill="${col}"/><text x="${X(17)+10}" y="${Y(a[17])+4}" font-size="11" font-weight="${me||top?800:400}" fill="${me||top?'var(--ink)':'var(--sub)'}">${n} ${km.toFixed(1)}</text>`}
+ return s+'</svg>'}
+$('#rv-race').innerHTML=`<div class="lbl" style="margin-top:20px"><span>날짜별 등수</span><span>굵은 선이 나예요</span></div>`+raceSVG();
+$('#rv-dist').innerHTML=`<div class="lbl" style="margin-top:20px"><span>거리별 최고 페이스 순위</span><span>11월</span></div>`+
+ [['1K','9위',"7'17\"/km",'2명이 추월했어요'],['3K','8위',"7'17\"/km",'2명이 추월했어요'],['5K','—',"10'49\"/km",'5.41km 최장 기록'],['10K','—','기록 없음','']].map(([d,r,p,m])=>
+ `<div class="rk"><div class="n" style="font-size:22px">${d}</div><div><div style="font-weight:800;font-size:15px">${p}</div><div class="sub" style="font-size:12px">${m}</div></div><div class="num" style="font-size:26px">${r}</div></div>`).join('');
+
+$('#events').innerHTML=EVENTS.map(e=>`<div class="ev"><div class="d">11/21<small>토</small></div><div style="min-width:0"><div style="font-weight:800;font-size:14px;line-height:1.35">${e[0]}</div>
+ <div class="sub" style="font-size:12px;margin-top:3px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span>${e[1]}</span><span class="st${e[3]?' open':''}">${e[3]?'접수 중':'접수 마감'}</span></div><div class="sub" style="font-size:11px;margin-top:2px">${e[2]}</div></div>
+ <button type="button" class="ib star" aria-pressed="false" aria-label="관심 대회">${ICON.star}</button></div>`).join('');
+
+$('#cal').innerHTML=['일','월','화','수','목','금','토'].map(d=>`<div class="hd7">${d}</div>`).join('')+Array.from({length:30},(_,i)=>{const d=i+1,k=RUN[d];
+ return `<div class="${k?'run':''}${d===18?' today':''}${d>18?' fut':''}" style="--k:${k?Math.min(1,.45+k/10):0}" ${k?'role="button" tabindex="0" data-demo':''}>${d}${k?`<small>${k.toFixed(1)}</small>`:''}</div>`}).join('');
+$('#recs').innerHTML=RECS.map(r=>`<button type="button" class="rec" data-demo><div class="km">${r[0]}<small>km</small></div><div style="min-width:0"><div class="sub" style="font-size:12px"><b style="color:var(--ink)">더기</b> ${r[1]} · Nike Run Club</div><div style="font-weight:800;font-size:16px;margin-top:2px">${r[2]}</div><div class="sub" style="font-size:12px;margin-top:2px">${r[3]?`<span class="otag">${r[3]}</span> `:''}눌러서 기록 카드 보기</div></div></button>`).join('');
+
+/* ---------- interactions ---------- */
+document.addEventListener('click',e=>{
+ const t=e.target.closest('button,a,[data-demo]');if(!t)return;
+ if(t.matches('[data-demo]')){e.preventDefault();toast('데모 화면이에요');return}
+ if(t.dataset.tab){showTab(t.dataset.tab);return}
+ if(t.matches('[data-chips] .chip')){t.parentElement.querySelectorAll('.chip').forEach(c=>c.setAttribute('aria-pressed',c===t));return}
+ if(t.dataset.rv){$$('[data-rv]').forEach(b=>b.setAttribute('aria-pressed',b===t));['list','race','dist'].forEach(v=>$('#rv-'+v).hidden=v!==t.dataset.rv);return}
+ if(t.dataset.sv){$$('[data-sv]').forEach(b=>b.setAttribute('aria-pressed',b===t));$('#sv-meet').hidden=t.dataset.sv!=='meet';$('#sv-race').hidden=t.dataset.sv!=='race';return}
+ if(t.matches('[data-close]')){t.closest('.alert').remove();return}
+ if(t.matches('.cheer')){const on=t.getAttribute('aria-pressed')!=='true';t.setAttribute('aria-pressed',on);t.querySelector('span').textContent=+t.dataset.c+(on?1:0);return}
+ if(t.matches('.star')){t.setAttribute('aria-pressed',t.getAttribute('aria-pressed')!=='true');return}
+ if(t.matches('[data-head]')){toast('데모 화면이에요')}
+});
+document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('.cal [data-demo]')){e.preventDefault();toast('데모 화면이에요')}});
+function showTab(id){$$('nav button').forEach(b=>{if(b.dataset.tab===id)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});
+ $$('.scr').forEach(s=>s.classList.toggle('on',s.id==='s-'+id));$('#s-'+id).scrollTop=0}
+function setSkin(s){document.body.dataset.skin=s;$$('[data-skin-btn]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.skinBtn===s))}
+$$('[data-skin-btn]').forEach(b=>b.onclick=()=>setSkin(b.dataset.skinBtn));
+$$('[data-pick]').forEach(b=>b.onclick=()=>{setSkin(b.dataset.pick);$('#picker').hidden=true;$('#stage').hidden=false;fit();play()});
+$('#replay').onclick=play;$('#skip').onclick=()=>finish();
+
+let SCALE=1;function fit(){const w=$('#wrap'),ah=innerHeight-$('#bar').offsetHeight-(innerWidth>480?16:0),aw=innerWidth;SCALE=Math.min(1,ah/844,aw/390);phone.style.transform=`scale(${SCALE})`;phone.style.marginBottom=(844*SCALE-844)+'px'}
+addEventListener('resize',fit);
+
+/* ---------- opening ---------- */
+const cv=$('#fx'),ctx=cv.getContext('2d');ctx.scale(2,2);
+const W=390,H=844,clamp=x=>x<0?0:x>1?1:x,smooth=x=>{x=clamp(x);return x*x*(3-2*x)},outExpo=x=>{x=clamp(x);return x>=1?1:1-Math.pow(2,-10*x)},outCubic=x=>{x=clamp(x);return 1-Math.pow(1-x,3)},lerp=(a,b,t)=>a+(b-a)*t;
+const hex=h=>{h=h.replace('#','');return[0,2,4].map(i=>parseInt(h.substr(i,2),16))},rgb=(c,a)=>`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
+const LY=462,gy=(x,amp=1)=>LY+22*amp*Math.sin((x-195)/390*Math.PI*1.5),T_LINE=1.9,T_MORPH=3.35,END=5.4;
+const STATS=[{cx:62,digits:'9',label:'크루'},{cx:166,digits:'52',label:'러너'},{cx:294,digits:'1,562',unit:'KM',label:'11월 함께 달린 거리'}];
+let P=[],C={},tintLogo,raf=0,t0=0,running=false;
+function prep(){
+ C={ink:hex(css('--ink')),sub:hex(css('--sub')),acc:hex(css('--acc')),line:css('--line'),dark:document.body.dataset.skin==='dark'};
+ const lg=$('#logo');tintLogo=document.createElement('canvas');tintLogo.width=lg.naturalWidth;tintLogo.height=lg.naturalHeight;const tc=tintLogo.getContext('2d');
+ tc.drawImage(lg,0,0);tc.globalCompositeOperation='source-in';tc.fillStyle=rgb(C.ink,1);tc.fillRect(0,0,tintLogo.width,tintLogo.height);
+ const num=$('#heroNum'),pr=phone.getBoundingClientRect(),mk=document.createElement('span');mk.style.cssText='display:inline-block;width:0;height:0';num.appendChild(mk);
+ const base=(mk.getBoundingClientRect().top-pr.top)/SCALE,left=(num.getBoundingClientRect().left-pr.left)/SCALE;mk.remove();
+ const oc=document.createElement('canvas');oc.width=W;oc.height=H;const o=oc.getContext('2d');o.font='italic 800 168px "Barlow Condensed"';o.letterSpacing='-3px';o.fillStyle='#fff';o.fillText(num.textContent.trim(),left,base);
+ const d=o.getImageData(0,0,W,H).data,pts=[];for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(d[(y*W+x)*4+3]>140)pts.push([x,y]);
+ const N=2600,tg=[];for(let i=0;i<N;i++){const p=pts[(Math.random()*pts.length)|0];tg.push([p[0]+Math.random(),p[1]+Math.random()])}
+ tg.sort((a,b)=>a[0]-b[0]);P=[];for(let i=0;i<N;i++){const x=(i+Math.random())/N*W;P.push({sx:x,sy:gy(x)+(Math.random()-.5)*4,tx:tg[i][0],ty:tg[i][1],d:x/W*.34+Math.random()*.16,arc:16+Math.random()*42})}
+}
+function stats(t){
+ const A=smooth((t-.85)/.3)*(1-smooth((t-3)/.4)),ok=smooth((t-3)/.4);if(A<=0)return;
+ ctx.save();ctx.globalAlpha=A;ctx.translate(0,-14*ok);const SY=716,RH=52;
+ ctx.strokeStyle=C.line;ctx.lineWidth=1;for(const x of[116,216]){ctx.beginPath();ctx.moveTo(x+6,SY-40);ctx.lineTo(x-6,SY+26);ctx.stroke()}
+ let ri=0;for(const s of STATS){ctx.font='italic 800 46px "Barlow Condensed"';const dw=ctx.measureText('0').width-1,cw=ctx.measureText(',').width;
+  ctx.font='italic 700 18px "Barlow Condensed"';const uw=s.unit?ctx.measureText(s.unit).width+5:0;let tw=uw;for(const ch of s.digits)tw+=ch===','?cw:dw;let x=s.cx-tw/2;
+  for(const ch of s.digits){ctx.font='italic 800 46px "Barlow Condensed"';ctx.fillStyle=rgb(C.ink,1);ctx.textAlign='left';
+   if(ch===','){ctx.fillText(',',x,SY);x+=cw;continue}
+   const p=outCubic((t-(.9+ri*.09))/(1.05+ri*.09)),v=(+ch+10*(2+ri%2))*p,f=v-Math.floor(v),dd=Math.floor(v)%10;
+   ctx.save();ctx.beginPath();ctx.rect(x-3,SY-RH+8,dw+8,RH);ctx.clip();ctx.fillText(dd,x,SY-f*RH);ctx.fillText((dd+1)%10,x,SY+(1-f)*RH);ctx.restore();x+=dw;ri++}
+  if(s.unit){ctx.font='italic 700 18px "Barlow Condensed"';ctx.fillStyle=rgb(C.acc,1);ctx.fillText(s.unit,x+5,SY)}
+  ctx.font='400 12px "Gothic A1"';ctx.fillStyle=rgb(C.sub,1);ctx.textAlign='center';ctx.fillText(s.label,s.cx,SY+24)}
+ ctx.restore()}
+function draw(t){
+ ctx.clearRect(0,0,W,H);
+ const lo=smooth((t-1.8)/.5),lA=smooth((t-.15)/.5)*(1-lo);
+ if(lA>0){const s=lerp(.9,1,outExpo((t-.15)/.8))*(1-.06*lo),w=134*s,h=w*tintLogo.height/tintLogo.width;ctx.save();ctx.globalAlpha=lA;ctx.drawImage(tintLogo,195-w/2,LY-8-h+10*lo,w,h);ctx.restore()}
+ const wA=smooth((t-.4)/.45)*(1-smooth((t-1.75)/.4));
+ if(wA>0){ctx.save();ctx.globalAlpha=wA;ctx.textAlign='center';const dy=8*(1-outExpo((t-.4)/.7));ctx.fillStyle=rgb(C.ink,1);ctx.font='800 30px "Gothic A1"';ctx.fillText('아워런',195,LY+62+dy);ctx.fillStyle=rgb(C.sub,1);ctx.font='400 13px "Gothic A1"';ctx.fillText('우리 크루 달리기 기록',195,LY+88+dy);ctx.restore()}
+ stats(t);
+ const g=smooth((t-T_LINE)/1.15),lineA=(t>T_LINE?1:0)*(1-smooth((t-T_MORPH)/.12));
+ if(lineA>0){const half=lerp(14,215,g);ctx.save();ctx.globalAlpha=lineA*smooth((t-T_LINE)/.2);ctx.strokeStyle=rgb(C.acc,1);ctx.lineWidth=5;ctx.lineCap='round';if(C.dark){ctx.shadowColor=rgb(C.acc,.75);ctx.shadowBlur=14}
+  ctx.beginPath();for(let x=195-half;x<=195+half;x+=3){const y=gy(x,g);x===195-half?ctx.moveTo(x,y):ctx.lineTo(x,y)}ctx.stroke();ctx.restore()}
+ if(t>=T_MORPH-.02){const pa=1-smooth((t-(T_MORPH+1.12))/.25);if(pa>0)for(const p of P){const k=smooth((t-T_MORPH-p.d)/.62),x=lerp(p.sx,p.tx,k),y=lerp(p.sy,p.ty,k)-Math.sin(k*Math.PI)*p.arc,
+  c=[lerp(C.acc[0],C.ink[0],k),lerp(C.acc[1],C.ink[1],k),lerp(C.acc[2],C.ink[2],k)];ctx.fillStyle=rgb(c,pa*(.75+.25*k));ctx.fillRect(x-1.2,y-1.2,2.4,2.4)}}
+ if(t>T_MORPH+1.0)$('#heroNum').style.opacity=1;
+ if(t>T_MORPH+.92&&!draw.rev){draw.rev=1;$$('.rev').forEach(el=>{const r=+(el.dataset.r||0);el.style.transitionDelay=(r*.08)+'s';el.style.opacity=1;el.style.transform='none'})}
+}
+async function play(){
+ cancelAnimationFrame(raf);showTab('home');
+ await document.fonts.ready;await Promise.all([document.fonts.load('italic 800 168px "Barlow Condensed"','19.7'),document.fonts.load('800 30px "Gothic A1"','아워런')]);
+ const lg=$('#logo');if(!lg.complete)await lg.decode();
+ $$('.rev').forEach(el=>{el.style.transitionDelay='0s';el.style.opacity='';el.style.transform=''});$('#heroNum').style.opacity='';
+ phone.classList.add('pre');draw.rev=0;prep();$('#skip').style.display='block';running=true;t0=performance.now();
+ const step=now=>{const t=(now-t0)/1000;draw(t);if(t<END)raf=requestAnimationFrame(step);else finish()};raf=requestAnimationFrame(step)}
+function finish(){cancelAnimationFrame(raf);running=false;ctx.clearRect(0,0,W,H);$('#skip').style.display='none';
+ $$('.rev').forEach(el=>{el.style.opacity=1;el.style.transform='none'});$('#heroNum').style.opacity=1;
+ setTimeout(()=>{phone.classList.remove('pre');$$('.rev').forEach(el=>{el.style.opacity='';el.style.transform='';el.style.transitionDelay=''});$('#heroNum').style.opacity=''},700)}
+</script>
+</body>
+</html>
+
+```
